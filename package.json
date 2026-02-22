@@ -2,25 +2,26 @@
   "name": "airtext",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:signal\"",
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:signal": "cd apps/signal && npm run dev",
+    "build": "npm run build:web && npm run build:signal",
+    "build:web": "cd apps/web && npm run build",
+    "build:signal": "cd apps/signal && npm run build",
+    "start": "concurrently \"npm run start:web\" \"npm run start:signal\"",
+    "start:web": "cd apps/web && npm run start",
+    "start:signal": "cd apps/signal && npm run start",
+    "lint": "npm run lint:web && npm run lint:signal",
+    "lint:web": "cd apps/web && npm run lint",
+    "lint:signal": "cd apps/signal && npm run lint",
+    "clean": "rm -rf node_modules apps/*/node_modules apps/*/.next apps/*/dist"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
+    "concurrently": "^9.1.2",
     "typescript": "^5"
   }
 }
