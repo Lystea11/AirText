@@ -17,7 +17,6 @@ import {
   setupConnectionHandlers,
   sendMessage as sendWebRTCMessage,
   sendFile as sendWebRTCFile,
-  parseIceCandidate,
 } from '../lib/webrtc';
 import { emitSocketEvent, onSocketEvent } from '../lib/socket';
 
@@ -29,6 +28,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const connectionRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const remoteDataChannelRef = useRef<RTCDataChannel | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
   // Keep callbacks in refs so channel handlers don't go stale
   const onMessageReceivedRef = useRef(onMessageReceived);
@@ -59,6 +59,7 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       connectionRef.current.close();
       connectionRef.current = null;
     }
+    pendingCandidatesRef.current = [];
     setConnectionState('idle');
   }, []);
 
@@ -71,6 +72,34 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       setConnectionState('error');
     },
   }), [onMessageCallback]);
+
+  const flushPendingCandidates = useCallback(async () => {
+    if (!connectionRef.current) return;
+    const candidates = pendingCandidatesRef.current;
+    pendingCandidatesRef.current = [];
+    for (const candidate of candidates) {
+      try {
+        await connectionRef.current.addIceCandidate(candidate);
+      } catch (error) {
+        console.error('[useWebRTC] Error adding buffered ICE candidate:', error);
+      }
+    }
+  }, []);
+
+  const addIceCandidate = useCallback(async (candidate: RTCIceCandidateInit) => {
+    // Buffer candidates until we have both a connection and a remote description.
+    // ICE candidates that arrive before setRemoteDescription completes would throw
+    // and be permanently lost, breaking the P2P connection.
+    if (!connectionRef.current || !connectionRef.current.remoteDescription) {
+      pendingCandidatesRef.current.push(candidate);
+      return;
+    }
+    try {
+      await connectionRef.current.addIceCandidate(candidate);
+    } catch (error) {
+      console.error('[useWebRTC] Error adding ICE candidate:', error);
+    }
+  }, []);
 
   const createOffer = useCallback(async (): Promise<RTCSessionDescription | null> => {
     try {
@@ -127,11 +156,12 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     try {
       setConnectionState('connecting');
       await connectionRef.current.setRemoteDescription(offer);
+      await flushPendingCandidates();
     } catch (error) {
       console.error('[useWebRTC] Error setting remote description:', error);
       setConnectionState('error');
     }
-  }, [roomCode, makeChannelCallbacks]);
+  }, [roomCode, makeChannelCallbacks, flushPendingCandidates]);
 
   const createAnswer = useCallback(async (): Promise<RTCSessionDescription | null> => {
     if (!connectionRef.current) {
@@ -156,23 +186,12 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     }
     try {
       await connectionRef.current.setRemoteDescription(answer);
+      await flushPendingCandidates();
     } catch (error) {
       console.error('[useWebRTC] Error setting remote description (answer):', error);
       setConnectionState('error');
     }
-  }, []);
-
-  const addIceCandidate = useCallback(async (candidate: RTCIceCandidate) => {
-    if (!connectionRef.current) {
-      console.error('[useWebRTC] Cannot add ICE candidate: no connection');
-      return;
-    }
-    try {
-      await connectionRef.current.addIceCandidate(candidate);
-    } catch (error) {
-      console.error('[useWebRTC] Error adding ICE candidate:', error);
-    }
-  }, []);
+  }, [flushPendingCandidates]);
 
   const sendMessage = useCallback((text: string) => {
     const channel = getChannel();

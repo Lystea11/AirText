@@ -41,7 +41,7 @@ export interface UseWebRTCReturn {
   setOffer: (offer: RTCSessionDescription) => void;
   createAnswer: () => Promise<RTCSessionDescription | null>;
   setAnswer: (answer: RTCSessionDescription) => void;
-  addIceCandidate: (candidate: RTCIceCandidate) => void;
+  addIceCandidate: (candidate: RTCIceCandidateInit) => void;
   disconnect: () => void;
 }
 
